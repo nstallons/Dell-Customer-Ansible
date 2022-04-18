@@ -1,0 +1,116 @@
+---
+- hosts: OME
+  connection: local
+  name: Discover, Deploy SCP, Update, Deploy OS
+  gather_facts: False
+
+  collections:
+    - dellemc.openmanage
+
+  tasks:
+    - name: Discover servers in a range
+      dellemc.openmanage.ome_discovery:
+        hostname: "{{ome_hostname}}"
+        username: "{{ome_user}}"
+        password: "{{ome_password}}"
+        discovery_job_name: "Ansible Servers"
+        discovery_config_targets:
+          - network_address_detail:
+              - 192.168.1.2
+            device_types:
+              - SERVER
+            wsman:
+              username: {{idrac_user}}
+              password: {{idrac_password}}
+        trap_destination: True
+
+    - name: Create a new device group
+      dellemc.openmanage.ome_groups:
+        hostname: "{{ome_hostname}}"
+        username: "{{ome_user}}"
+        password: "{{ome_password}}"
+        name: "test_01"
+        description: "Group for Demo"
+
+    - name: Add devices to a static device group by using the group name and IPv4 addresses
+      dellemc.openmanage.ome_device_group:
+        hostname: "{{ome_hostname}}"
+        username: "{{ome_user}}"
+        password: "{{ome_password}}"
+        name: "test_01"
+        ip_addresses:
+          - 100.79.1.2
+
+    - name: Create baseline for device IDs
+      dellemc.openmanage.ome_firmware_baseline:
+        hostname: "{{ome_hostname}}"
+        username: "{{ome_user}}"
+        password: "{{ome_password}}"
+        baseline_name: "Demo"
+        baseline_description: "Demo"
+        catalog_name: "test_01"
+        device_service_tags:
+          - GV6T673
+
+    - name: Create a template from a reference device
+      dellemc.openmanage.ome_template:
+        hostname: "{{ome_hostname}}"
+        username: "{{ome_user}}"
+        password: "{{ome_password}}"
+        device_service_tag : 
+        attributes:
+          Name: "test_01"
+          Description: "Test Template for Deployment"
+
+    - name: Deploy template on one or multiple devices.
+      dellemc.openmanage.ome_template:
+        hostname: "{{ome_hostname}}"
+        username: "{{ome_user}}"
+        password: "{{ome_password}}"
+        command: "deploy"
+        template_name: "Template"
+        device_service_tag:
+          - GV6T673
+      register: results
+
+    - name: Get the job ID.
+      ansible.builtin.set_fact:
+        job_id: "{{ results['return_id'] | int }}"
+
+    - name: Get job details for id.
+      dellemc.openmanage.ome_job_info:
+        hostname: "{{ome_hostname}}"
+        username: "{{ome_user}}"
+        password: "{{ome_password}}"
+        job_id: "{{job_id}}"
+      register: job_results
+      until:  job_results['job_info']['LastRunStatus']['Id'] == 2060 or
+              job_results['job_info']['LastRunStatus']['Id'] == 2070 or
+              job_results['job_info']['LastRunStatus']['Id'] == 2090 or
+              job_results['job_info']['LastRunStatus']['Id'] == 2100 or
+              job_results['job_info']['LastRunStatus']['Id'] == 2102 or
+              job_results['job_info']['LastRunStatus']['Id'] == 2103  
+      retries: 500
+      delay: 5
+
+    - name: Validates that Deployment has completed. 
+      set_fact:
+        Status: "Failed" # set dummy flag not used
+      failed_when: job_results['job_info']['LastRunStatus']['Id'] != 2060
+
+- hosts: esxihost01
+  connection: local
+  name: Deploy ESXI.
+  gather_facts: False
+
+  collections:
+    - dellemc.openmanage
+  tasks:
+    - name: Boot to Network ISO
+      dellemc.openmanage.idrac_os_deployment:
+        idrac_ip: "{{idrac_hostname}}"
+        idrac_user: "{{idrac_user}}"
+        idrac_password: "{{idrac_password}}"
+        share_name: "192.168.2.1:/home/test/nfs"
+        iso_image:  "test_01.iso"
+        expose_duration: 180

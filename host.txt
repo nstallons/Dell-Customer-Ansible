@@ -1,0 +1,19 @@
+#OME IP Address
+[OME]
+192.168.1.1
+
+#Variables for OME IP
+[OME:vars]
+ome_hostname="100.77.11.42"
+ome_user='username'
+ome_password='password'
+
+#List out iDRAC IP Addresses
+[idrac]
+192.168.1.2
+
+#Variables per iDRAC IP Addresses
+[idrac:vars]
+idrac_hostname="ip address"
+idrac_user='username'
+idrac_password='password'
